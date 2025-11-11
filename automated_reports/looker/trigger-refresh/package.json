@@ -1,1 +1,12 @@
-{ "type": "module", "dependencies": { "node-fetch": "^3.3.2" } }
+{
+  "name": "trigger-refresh",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Cloud Function to trigger jsm-puller Cloud Run Job",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
