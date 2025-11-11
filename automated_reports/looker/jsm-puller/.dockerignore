@@ -1,0 +1,30 @@
+# Git
+.git/
+.github/
+.gitignore
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Documentation
+*.md
+README*
+
+# Environment files
+.env*
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# CI/CD
+.github/
+
+# Tests
+test/
+tests/
+*.test.js
+coverage/

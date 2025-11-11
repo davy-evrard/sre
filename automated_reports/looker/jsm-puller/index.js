@@ -5,6 +5,16 @@ import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 const bq = new BigQuery();
 const secrets = new SecretManagerServiceClient();
 
+// Structured logging for Cloud Logging
+function log(severity, message, data = {}) {
+  console.log(JSON.stringify({
+    severity,
+    message,
+    timestamp: new Date().toISOString(),
+    ...data
+  }));
+}
+
 function env(name, fallback) {
   return process.env[name] ?? fallback;
 }
@@ -98,7 +108,18 @@ async function fetchIssuesSince({ base, user, token, sinceIso }) {
     const res = await fetch(url, {
       headers: { Authorization: auth, Accept: "application/json" },
     });
-    if (!res.ok) throw new Error(`Jira ${res.status}: ${await res.text()}`);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      log("ERROR", "Jira API request failed", {
+        status: res.status,
+        error: errorText,
+        jql,
+        startAt
+      });
+      throw new Error(`Jira ${res.status}: ${errorText}`);
+    }
+
     const data = await res.json();
 
     for (const issue of data.issues ?? []) {
@@ -195,27 +216,41 @@ async function main() {
   const sinceEnv = env("SINCE", "");
   const sinceIso = sinceEnv || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+  log("INFO", "Starting JSM puller", {
+    project,
+    dataset,
+    stagingTable,
+    location,
+    since: sinceIso
+  });
+
   const base = await getSecret("jsm_base");
   const user = await getSecret("jsm_user");
   const token = await getSecret("jsm_token");
 
-  console.log(`Pulling issues updated since ${sinceIso}...`);
+  log("INFO", "Fetching issues from Jira", { since: sinceIso });
   const rows = await fetchIssuesSince({ base, user, token, sinceIso });
-  console.log(`Fetched ${rows.length} issues.`);
+  log("INFO", "Fetched issues from Jira", { count: rows.length });
 
   const inserted = await insertToStaging({ dataset, stagingTable, rows });
-  console.log(`Inserted ${inserted} rows to staging.`);
+  log("INFO", "Inserted rows to staging table", {
+    count: inserted,
+    table: `${dataset}.${stagingTable}`
+  });
 
   if (inserted > 0) {
-    console.log("Merging to target...");
+    log("INFO", "Starting merge to target table");
     await runMerge({ project, dataset, location });
-    console.log("Merge complete.");
+    log("INFO", "Merge completed successfully");
   } else {
-    console.log("Nothing to merge.");
+    log("INFO", "No data to merge, skipping merge operation");
   }
 }
 
 main().catch((e) => {
-  console.error(e);
+  log("ERROR", "Fatal error in JSM puller", {
+    error: e.message,
+    stack: e.stack
+  });
   process.exit(1);
 });

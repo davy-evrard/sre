@@ -51,4 +51,10 @@ jobs:
       - name: Print Function URL
         run: |
           URL=$(gcloud functions describe "$FUNC_NAME" --region="$REGION" --format='value(serviceConfig.uri)')
-          echo "Function URL: ${URL}?token=${REFRESH_SECRET}"
+          echo "Function URL: ${URL}"
+          echo ""
+          echo "Usage with curl:"
+          echo "curl -H \"Authorization: Bearer ${REFRESH_SECRET}\" \"${URL}\""
+          echo ""
+          echo "With custom time window:"
+          echo "curl -H \"Authorization: Bearer ${REFRESH_SECRET}\" \"${URL}?since=2024-01-01T00:00:00Z\""

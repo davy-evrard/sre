@@ -56,12 +56,12 @@ jobs:
             gcloud run jobs update "$JOB_NAME" \
               --image="$IMAGE_URI" \
               --region="$REGION" \
-              --service-account="$RUNTIME_SA" \
+              --service-account="$SA_EMAIL" \
               --set-env-vars="GCP_PROJECT=$PROJECT_ID,BQ_DATASET=$BQ_DATASET,BQ_STAGING_TABLE=jsm_tickets_staging,BQ_LOCATION=$BQ_LOCATION"
           else
             gcloud run jobs create "$JOB_NAME" \
               --image="$IMAGE_URI" \
               --region="$REGION" \
-              --service-account="$RUNTIME_SA" \
+              --service-account="$SA_EMAIL" \
               --set-env-vars="GCP_PROJECT=$PROJECT_ID,BQ_DATASET=$BQ_DATASET,BQ_STAGING_TABLE=jsm_tickets_staging,BQ_LOCATION=$BQ_LOCATION"
           fi
