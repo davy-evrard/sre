@@ -27,4 +27,12 @@ README*
 test/
 tests/
 *.test.js
+*.test.ts
 coverage/
+
+# TypeScript build artifacts
+dist/
+*.tsbuildinfo
+
+# Old JavaScript files (keeping TypeScript source)
+index.js

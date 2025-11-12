@@ -1,7 +1,28 @@
-import fetch from "node-fetch";
+import fetch, { Response as FetchResponse } from "node-fetch";
+import type { Request, Response } from "@google-cloud/functions-framework";
+
+/* ---------------------------- Types & Interfaces -------------------------- */
+
+interface LogData {
+  [key: string]: unknown;
+}
+
+interface MetadataServiceResponse {
+  access_token: string;
+  expires_in: number;
+  token_type: string;
+}
+
+interface CloudRunJobResponse {
+  metadata?: {
+    name?: string;
+  };
+}
+
+/* -------------------------- Utility Functions ---------------------------- */
 
 // Structured logging for Cloud Logging
-function log(severity, message, data = {}) {
+function log(severity: string, message: string, data: LogData = {}): void {
   console.log(JSON.stringify({
     severity,
     message,
@@ -10,7 +31,9 @@ function log(severity, message, data = {}) {
   }));
 }
 
-export default async (req, res) => {
+/* ---------------------------- Main Handler -------------------------------- */
+
+export default async (req: Request, res: Response): Promise<void> => {
   try {
     // Validate Authorization header (Bearer token)
     const secret = process.env.SECRET;
@@ -22,34 +45,53 @@ export default async (req, res) => {
         sourceIP: req.ip,
         hasAuthHeader: !!authHeader
       });
-      return res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
 
     const project = process.env.PROJECT;
     const region = process.env.REGION;
     const job = process.env.JOB;
-    const since = req.query.since || "";
+    const since = (req.query.since as string) || "";
+
+    if (!project || !region || !job) {
+      log("ERROR", "Missing required environment variables", {
+        hasProject: !!project,
+        hasRegion: !!region,
+        hasJob: !!job
+      });
+      res.status(500).json({ error: "Server misconfiguration" });
+      return;
+    }
 
     log("INFO", "Triggering job", { job, project, region, since: since || "default" });
 
     // Get access token from metadata service
-    const meta = await fetch("http://metadata/computeMetadata/v1/instance/service-accounts/default/token",
-      { headers: { "Metadata-Flavor": "Google" } });
+    const meta: FetchResponse = await fetch(
+      "http://metadata/computeMetadata/v1/instance/service-accounts/default/token",
+      { headers: { "Metadata-Flavor": "Google" } }
+    );
 
     if (!meta.ok) {
       throw new Error(`Failed to get access token: ${meta.status}`);
     }
 
-    const { access_token } = await meta.json();
+    const metaData = await meta.json() as MetadataServiceResponse;
+    const { access_token } = metaData;
 
     // Trigger Cloud Run Job
     const url = `https://${region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${project}/jobs/${job}:run`;
 
     const body = since ? {
-      overrides: { containerOverrides: [{ name: job, env: [{ name: "SINCE", value: since }] }] }
+      overrides: {
+        containerOverrides: [{
+          name: job,
+          env: [{ name: "SINCE", value: since }]
+        }]
+      }
     } : {};
 
-    const r = await fetch(url, {
+    const r: FetchResponse = await fetch(url, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${access_token}`,
@@ -66,13 +108,14 @@ export default async (req, res) => {
         job,
         url
       });
-      return res.status(500).json({
+      res.status(500).json({
         error: "Failed to trigger job",
         details: errorText
       });
+      return;
     }
 
-    const result = await r.json();
+    const result = await r.json() as CloudRunJobResponse;
     log("INFO", "Job triggered successfully", { job, executionId: result?.metadata?.name });
 
     res.json({
@@ -82,13 +125,14 @@ export default async (req, res) => {
     });
 
   } catch (error) {
+    const err = error as Error;
     log("ERROR", "Unexpected error in trigger function", {
-      error: error.message,
-      stack: error.stack
+      error: err.message,
+      stack: err.stack
     });
     res.status(500).json({
       error: "Internal server error",
-      message: error.message
+      message: err.message
     });
   }
 };
