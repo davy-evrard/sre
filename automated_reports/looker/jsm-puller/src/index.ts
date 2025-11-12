@@ -167,6 +167,34 @@ function toRawJson(value: unknown): string | null {
   }
 }
 
+/* -------------------------- Security Validators --------------------------- */
+
+/**
+ * Validates ISO 8601 datetime string to prevent JQL injection
+ * Accepts formats: YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DDTHH:mm:ssZ
+ */
+function validateISO8601(dateString: string): boolean {
+  // Strict regex for ISO 8601 UTC datetime
+  const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+  if (!iso8601Regex.test(dateString)) {
+    return false;
+  }
+
+  // Ensure it's a valid date by parsing
+  const date = new Date(dateString);
+  return !isNaN(date.getTime());
+}
+
+/**
+ * Validates GCP identifiers (project, dataset, region) to prevent SQL injection
+ * Allows: lowercase letters, numbers, hyphens, underscores
+ */
+function validateGCPIdentifier(identifier: string): boolean {
+  const gcpIdentifierRegex = /^[a-z0-9_-]+$/;
+  return gcpIdentifierRegex.test(identifier);
+}
+
 /* ------------------------------ Core puller ------------------------------- */
 
 async function fetchIssuesSince({ base, user, token, sinceIso }: FetchIssuesParams): Promise<BigQueryRow[]> {
@@ -192,6 +220,14 @@ async function fetchIssuesSince({ base, user, token, sinceIso }: FetchIssuesPara
   ].join(",");
 
   const auth = "Basic " + Buffer.from(`${user}:${token}`).toString("base64");
+
+  // Validate sinceIso to prevent JQL injection
+  if (!validateISO8601(sinceIso)) {
+    throw new Error(
+      `Invalid 'since' parameter: must be ISO 8601 UTC datetime (e.g., 2024-01-01T00:00:00Z). Got: ${sinceIso}`
+    );
+  }
+
   const jql = `updated >= "${sinceIso}" order by updated asc`;
 
   let startAt = 0;
@@ -318,8 +354,31 @@ async function main(): Promise<void> {
     throw new Error("BQ_DATASET environment variable is required");
   }
 
+  // Validate GCP identifiers to prevent SQL injection
+  if (!validateGCPIdentifier(project)) {
+    throw new Error(`Invalid GCP_PROJECT format: ${project}. Must contain only lowercase letters, numbers, hyphens, and underscores.`);
+  }
+
+  if (!validateGCPIdentifier(dataset)) {
+    throw new Error(`Invalid BQ_DATASET format: ${dataset}. Must contain only lowercase letters, numbers, hyphens, and underscores.`);
+  }
+
+  if (!validateGCPIdentifier(stagingTable)) {
+    throw new Error(`Invalid BQ_STAGING_TABLE format: ${stagingTable}. Must contain only lowercase letters, numbers, hyphens, and underscores.`);
+  }
+
+  // Validate location (can have regions like europe-west1)
+  if (!/^[A-Z]{2}$|^[a-z]+-[a-z]+\d+$/.test(location)) {
+    throw new Error(`Invalid BQ_LOCATION format: ${location}. Must be a valid BigQuery location (e.g., EU, US, europe-west1).`);
+  }
+
   const sinceEnv = env("SINCE", "");
   const sinceIso = sinceEnv || new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  // If SINCE was provided via env var, validate it
+  if (sinceEnv && !validateISO8601(sinceEnv)) {
+    throw new Error(`Invalid SINCE environment variable: ${sinceEnv}. Must be ISO 8601 UTC datetime (e.g., 2024-01-01T00:00:00Z).`);
+  }
 
   log("INFO", "Starting JSM puller", {
     project,
