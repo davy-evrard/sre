@@ -307,7 +307,7 @@ async function runMerge({ project, dataset, location }: RunMergeParams): Promise
 
 async function main(): Promise<void> {
   const project = env("GCP_PROJECT");
-  const dataset = env("BQ_DATASET", "support") as string;
+  const dataset = env("BQ_DATASET", "sre") as string;
   const stagingTable = env("BQ_STAGING_TABLE", "jsm_tickets_staging") as string;
   const location = env("BQ_LOCATION", "EU") as string;
 
